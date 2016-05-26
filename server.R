@@ -1,38 +1,44 @@
 library(shiny)
+library(lubridate)
+library(ggplot2)
+library(doBy)
 
-#the computer guesses an integer between
-number <- floor(runif(1,1,101))
-#print(number)
-numberGuessed <- function(guess, number) {
-    returnValue <- "Nothing entered yet."
-    if (guess > 100) {
-        #print(guess)
-        #print(class(guess))
-        #print(class(100))
-        returnValue <- 'Above 100.\nPlease make a selection between 1 and 100.'
-    }
-    else if (guess < 1) {
-        #print(guess)
-        returnValue <- 'Below 1.\nPlease make a selection between 1 and 100.'
-    }
-    else if (guess > number) {
-        returnValue <- 'Higher than the number.'
-    }
-    else if (guess < number) {
-        returnValue <- 'Lower than the number.'
-    }
-    else if (guess == number) {
-        returnValue <- 'Correct!'
-    }
-    returnValue
+banting <-read.csv("API_Banting.csv")
+
+function(input,output){
+    
+    output$plot1 <- renderPlot({
+        selected.data <- banting[(month(banting$Date)==input$month & year(banting$Date)== input$year),] 
+        ggplot(data=selected.data, aes(x=selected.data$Hour,y=selected.data$API))+geom_smooth(color="blue")+labs(x="Hour",y="API Index")
+    })
+    
+    output$table <- renderDataTable (banting[(month(banting$Date)==input$month & year(banting$Date)==input$year),])
+    
+    output$summary <- renderPrint({
+        summary(banting)
+    })
+    
+    output$text1 <- renderText({
+        input_month <- as.numeric(input$month)
+        mon_x <- as.character(month(ymd(010101) + months(input_month -1),label=TRUE,abbr=TRUE))
+        ##    paste("* Month Selected : ", mon_x,".")
+        paste("* Month And Year Selected : ", mon_x,"-",input$year,".")
+    })
+    
+    output$outcome <- renderText({
+        d1 <- banting[(month(banting$Date)== input$month & year(banting$Date)== input$year),]
+        d1 <- d1[,4:5]
+        cdata1 <- summaryBy(API ~ Hour, data=d1, FUN=c(length,mean,sd,max,min))
+        sorted_data <- cdata1[order(cdata1$API.mean,decreasing=TRUE),c(1,3)]
+        max_hours <- round(sorted_data[1,1],2)
+        max_mean <-  round(sorted_data[1,2],2) 
+        paste("* From the plot, we can observe that Average API reading peak at hours ",max_hours,
+              ":00 With Average of API reading is ", max_mean, ".")
+    })
+    ##  
+    ##  output$text2 <- renderText({
+    ##    input_month <- as.numeric(input$month)
+    ##    mon_x <- as.character(month(ymd(010101) + months(input_month -1),label=TRUE,abbr=TRUE))
+    ##    paste("* Month Selected : ", mon_x,".")
+    ##  })
 }
-shinyServer( 
-    function(input, output) {
-        output$inputValue <- renderPrint({as.numeric(input$guess)})
-        #output$outputValue <- renderText({numberGuessed(input$guess, number)})
-        output$outputValue <- renderText({
-            if (input$goButton == 0) "You have not guessed a number yet"
-            else if (input$goButton >= 1) numberGuessed(as.numeric(input$guess), number)
-        })
-    }
-)
