@@ -1,44 +1,63 @@
 library(shiny)
-library(lubridate)
+library(HistData)
+data(GaltonFamilies)
+library(dplyr)
 library(ggplot2)
-library(doBy)
 
-banting <-read.csv("API_Banting.csv")
+# converting in centimeters
+gf <- GaltonFamilies
+gf <- gf %>% mutate(father=father*2.54,
+                    mother=mother*2.54,
+                    childHeight=childHeight*2.54)
 
-function(input,output){
-    
-    output$plot1 <- renderPlot({
-        selected.data <- banting[(month(banting$Date)==input$month & year(banting$Date)== input$year),] 
-        ggplot(data=selected.data, aes(x=selected.data$Hour,y=selected.data$API))+geom_smooth(color="blue")+labs(x="Hour",y="API Index")
+# linear model
+regmod <- lm(childHeight ~ father + mother + gender, data=gf)
+
+shinyServer(function(input, output) {
+    output$parentsText <- renderText({
+        paste("When the father's height is",
+              strong(round(input$inFh, 1)),
+              "cm, and mother's is",
+              strong(round(input$inMh, 1)),
+              "cm, then:")
     })
-    
-    output$table <- renderDataTable (banting[(month(banting$Date)==input$month & year(banting$Date)==input$year),])
-    
-    output$summary <- renderPrint({
-        summary(banting)
+    output$prediction <- renderText({
+        df <- data.frame(father=input$inFh,
+                         mother=input$inMh,
+                         gender=factor(input$inGen, levels=levels(gf$gender)))
+        ch <- predict(regmod, newdata=df)
+        sord <- ifelse(
+            input$inGen=="female",
+            "Daugther",
+            "Son"
+        )
+        paste0(em(strong(sord)),
+               "'s predicted height would be approximately ",
+               em(strong(round(ch))),
+               " cm"
+        )
     })
-    
-    output$text1 <- renderText({
-        input_month <- as.numeric(input$month)
-        mon_x <- as.character(month(ymd(010101) + months(input_month -1),label=TRUE,abbr=TRUE))
-        ##    paste("* Month Selected : ", mon_x,".")
-        paste("* Month And Year Selected : ", mon_x,"-",input$year,".")
+    output$barsPlot <- renderPlot({
+        sord <- ifelse(
+            input$inGen=="female",
+            "Daugther",
+            "Son"
+        )
+        df <- data.frame(father=input$inFh,
+                         mother=input$inMh,
+                         gender=factor(input$inGen, levels=levels(gf$gender)))
+        ch <- predict(regmod, newdata=df)
+        yvals <- c("Father", sord, "Mother")
+        df <- data.frame(
+            x = factor(yvals, levels = yvals, ordered = TRUE),
+            y = c(input$inFh, ch, input$inMh),
+            colors = c("pink", "orange", "blue")
+        )
+        ggplot(df, aes(x=x, y=y, color=colors, fill=colors)) +
+            geom_bar(stat="identity", width=0.5) +
+            xlab("") +
+            ylab("Height (cm)") +
+            theme_minimal() +
+            theme(legend.position="none")
     })
-    
-    output$outcome <- renderText({
-        d1 <- banting[(month(banting$Date)== input$month & year(banting$Date)== input$year),]
-        d1 <- d1[,4:5]
-        cdata1 <- summaryBy(API ~ Hour, data=d1, FUN=c(length,mean,sd,max,min))
-        sorted_data <- cdata1[order(cdata1$API.mean,decreasing=TRUE),c(1,3)]
-        max_hours <- round(sorted_data[1,1],2)
-        max_mean <-  round(sorted_data[1,2],2) 
-        paste("* From the plot, we can observe that Average API reading peak at hours ",max_hours,
-              ":00 With Average of API reading is ", max_mean, ".")
-    })
-    ##  
-    ##  output$text2 <- renderText({
-    ##    input_month <- as.numeric(input$month)
-    ##    mon_x <- as.character(month(ymd(010101) + months(input_month -1),label=TRUE,abbr=TRUE))
-    ##    paste("* Month Selected : ", mon_x,".")
-    ##  })
-}
+})
